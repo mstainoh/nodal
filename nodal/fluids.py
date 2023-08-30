@@ -11,6 +11,7 @@ Created on Mon Oct 17 14:23:08 2016
 from scipy.optimize import newton
 import scipy.constants as SPC
 import numpy as np
+import functools
 
 try:
     from scipy.misc import derivative
@@ -78,11 +79,8 @@ component_props = {
     }
 
 
-def get_component_prop(component, prop):
-    for k, v in component_aliases.items():
-        if component in v:
-            return component_props[k][prop]
-    raise KeyError(f'component {component} not found')
+for k, v in component_aliases.items():
+    component_props.update(dict().fromkeys(v, component_props[k]))
 
 # =============================================================================
 # ---------- Part 2: Functions and auxiliary classes ----------#
@@ -252,7 +250,7 @@ def muw_Shell_McCain(pressure, temperature, salinity):
     calculates the water viscosity
     Uses Shell correlation + McCain pressure correction
     inputs: pressure and temperature in Pa and K
-    output: viscosity in cP
+    output: viscosity in Pa.s
     """
     B = 11.897 - 5.943e-2 * temperature + 6.422e-5 * (temperature ** 2)
     muw = 1 + 2.765e-3 * salinity * np.exp(B)
@@ -318,6 +316,24 @@ class Fluid:
             T = self.ref_T
         return self.compressibility_function(P,T)
 
+
+class Water(Fluid):
+    def __init__(self, salinity:float, ref_T:float=288.15):
+        self.salinity = salinity
+        self.ref_T = ref_T
+
+    @property
+    def salinity(self):
+        return self._salinity
+    
+    @salinity.setter
+    def salinity(self, new_value:float):
+        self._salinity = new_value
+        self.viscosity_function = functools.partial(muw_Shell_McCain, salinity=new_value)
+        self.compressibility_function = functools.partial(cw_chierici, salinity=new_value)
+        self.density_function = functools.partial(dw_chierici, salinity=new_value)
+
+
 class Gas(Fluid):
     def __init__(self, composition, ref_T=288.15, viscosity_correlation=0, z_correlation=0):
         
@@ -328,9 +344,9 @@ class Gas(Fluid):
 
         MW = Pcrit = Tcrit = 0
         for k, v in self.composition.items():
-            MW += v * get_component_prop(k, 'M')
-            Pcrit +=  v * get_component_prop(k, 'Pcrit')
-            Tcrit +=  v * get_component_prop(k, 'Tcrit')
+            MW += v * component_props[k]['M']
+            Pcrit +=  v * component_props[k]['Pcrit']
+            Tcrit +=  v * component_props[k]['Tcrit']
         self.MW = MW * 1e3
         self.Tcrit = Tcrit
         self.Pcrit=Pcrit

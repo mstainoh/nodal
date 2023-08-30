@@ -23,7 +23,7 @@ import gradient_functions as gf
 import fluids
 
 class Tubing:
-    def __init__(self, D, eps, x_points, z_points=None, k=3):
+    def __init__(self, D: float, eps: float, x_points, z_points=None, k:float=3):
         self.D = D
         self.eps = eps
         if z_points is None:
@@ -155,7 +155,7 @@ class BiPhaseVLP(SinglePhaseVLP):
                             rho_liquid=rho_liquid, rho_gas=rho_gas,
                             mu_liquid=mu_liquid, mu_gas=mu_gas,
                             D=D, inc=inc, eps=eps, sigma=sigma,
-                            mix_compressibility=0,
+                            mix_compressibility=mix_compressibility,
                             holdup_adj=self.holdup_adj, payne_correction=self.payne_correction,
                             full_output=False, verbose=self.verbose)
 
@@ -171,11 +171,12 @@ if __name__ == '__main__':
     print(tubing.get_end_points())
     print(tubing.get_inclination(-100))
  
+
+    # ------------- single phase test ----------- #
     print(sep + 'Single phase test')
     # single phase gas
     gas = fluids.Gas({'C1': .99, 'C2': .01})
     
-    # VLP
     ref_T = 24 + 273.15
     vlp1 = SinglePhaseVLP(tubing, T=ref_T, fluid=gas)
     P = 100 * SPC.bar
@@ -201,10 +202,10 @@ if __name__ == '__main__':
     print('Test delta P:', vlp1.get_end_pressure(gas_mass_rate, THP=THP) / SPC.bar)
     print('grav gradient:', THP / SPC.bar - vlp1.get_density(THP, -500) * x_points[0] * SPC.g / SPC.bar)
 
-
+    # ------------- bi phase test ----------- #
     print(sep + 'Bi phase test')
     rho_l, mu_l, sigma = 1000, 1e-3, 30
-    liquid = fluids.Fluid(density_function=lambda P, T: rho_l, viscosity_function=lambda P, T: mu_l)
+    liquid = fluids.Water(salinity=10)
     fsigma = lambda P, T: sigma
     vlp2 = BiPhaseVLP(tubing, liquid, gas, ref_T, fsigma)
     liquid_mass_rate = 0.00001 * rho_l / SPC.day
