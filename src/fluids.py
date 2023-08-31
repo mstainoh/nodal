@@ -315,7 +315,9 @@ class Fluid:
         if T is None:
             T = self.ref_T
         return self.compressibility_function(P,T)
-
+    
+    def get_standard_density(self):
+        return self.get_density(SPC.atm, 288.15)
 
 class Water(Fluid):
     def __init__(self, salinity:float, ref_T:float=288.15):
@@ -378,9 +380,6 @@ class Gas(Fluid):
         z = self.get_z(P,T)
         MW = self.MW
         return gas_density(P, T, z, MW)
-    
-    def get_standard_density(self):
-        return self.get_density(SPC.atm, 288.15)
 
     def get_impurities(self):
         out = dict().fromkeys(['H2S', 'CO2', 'N2'], 0)

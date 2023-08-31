@@ -29,6 +29,7 @@ class Tubing:
         if z_points is None:
             z_points = x_points
         self.trayectory =  IUS(x_points, z_points, k=k)
+        assert (np.diff(x_points) >= np.diff(z_points)).all(), 'x_point differences should be >= z_point'
         self.get_inclination = self.trayectory.derivative()
 
     def get_area(self):
@@ -39,6 +40,7 @@ class Tubing:
 
 class SinglePhaseVLP:
     verbose = False
+    solver_kwargs = {'method': 'RK45'}
     def __init__(self, tubing: Tubing,
                  fluid: fluids.Fluid,
                  T: Union[Callable[[float], float], float]):
@@ -62,7 +64,7 @@ class SinglePhaseVLP:
         return self.fluid.get_compressibility(P, self.get_temperature(x))
 
     def get_inclination(self, x):
-        return self.tubing.get_inclination(x)
+        return np.clip(self.tubing.get_inclination(x), -1 + 1e-7, 1 - 1e-7)
     
     def get_area(self):
         return self.tubing.get_area()
@@ -96,7 +98,7 @@ class SinglePhaseVLP:
             return grad
         
         y0 = [P0, 0, 0, 0]
-        return solve_ivp(func, tspan, y0)
+        return solve_ivp(func, tspan, y0, **self.solver_kwargs)
     
     def get_total_gradient(self, mass_rate, BHP=None, THP=None):
         solver = self.get_solver(mass_rate, BHP, THP)
@@ -107,6 +109,7 @@ class SinglePhaseVLP:
     
 
 class BiPhaseVLP(SinglePhaseVLP):
+    """"""
     def __init__(self, tubing, liquid: fluids.Fluid, gas: fluids.Fluid, T, sigma_function: Callable[[float, float], float],
                  payne_correction=False, holdup_adj=1):
         self.tubing = tubing
@@ -150,7 +153,11 @@ class BiPhaseVLP(SinglePhaseVLP):
             liquid_mass_rate / rho_liquid * self.liquid.get_compressibility(P, T) + 
             gas_mass_rate / rho_gas * self.gas.get_compressibility(P, T)
         ) / (liquid_mass_rate / rho_liquid + gas_mass_rate / rho_gas)
-
+        if self.verbose:
+            print('gradient inputs:')
+            print('pressure:', P)
+            print('x:', x)
+            print('mass_rate:', mass_rate)
         return gf.beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
                             rho_liquid=rho_liquid, rho_gas=rho_gas,
                             mu_liquid=mu_liquid, mu_gas=mu_gas,
@@ -183,7 +190,7 @@ if __name__ == '__main__':
     x = -500
 
     # test input
-    gas_mass_rate = 1000 * gas.get_standard_density() / SPC.day #100000 sm3
+    gas_mass_rate = 100000 * gas.get_standard_density() / SPC.day #100000 sm3
     print('mass rate:', gas_mass_rate, 100000 * 0.0008 / SPC.day)
     print('area:', vlp1.get_area())
     print('velocity:', vlp1.get_velocity(P, x, gas_mass_rate))
@@ -200,7 +207,7 @@ if __name__ == '__main__':
 #    print(slv)
     print(vlp1.get_total_gradient(gas_mass_rate, THP=THP) / SPC.bar)
     print('Test delta P:', vlp1.get_end_pressure(gas_mass_rate, THP=THP) / SPC.bar)
-    print('grav gradient:', THP / SPC.bar - vlp1.get_density(THP, -500) * x_points[0] * SPC.g / SPC.bar)
+    print('grav gradient:', - vlp1.get_density(THP, -500) * x_points[0] * SPC.g / SPC.bar)
 
     # ------------- bi phase test ----------- #
     print(sep + 'Bi phase test')
@@ -211,4 +218,4 @@ if __name__ == '__main__':
     liquid_mass_rate = 0.00001 * rho_l / SPC.day
     print('Test gradient:', vlp2.get_gradient(BHP, -500, [liquid_mass_rate, gas_mass_rate]) / SPC.bar)
 
-    print('Test delta P', vlp2.get_end_pressure( [liquid_mass_rate, gas_mass_rate], THP=THP) / SPC.bar)
+    print('Test delta P', vlp2.get_total_gradient( [liquid_mass_rate, gas_mass_rate], THP=THP) / SPC.bar)

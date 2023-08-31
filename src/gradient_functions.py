@@ -74,7 +74,7 @@ def froid(v, D):
     return v / np.sqrt(SPC.g * D)
 
 
-def _chen_approx(re, D, eps):
+def chen_approx(re, D, eps):
     """ chen aproximation for turbulent friction factor"""
     re = np.clip(re, 2e3, re)
     return (-4 * np.log10(0.2698 * (eps/D) - 5.0452 / re * np.log10(
@@ -100,12 +100,12 @@ def find_friction_factor(re, D, eps, fanning=True):
     """
     if np.any(re < 0):
         raise ValueError('Reynolds value cannot be negative')
-    f = np.zeros_like(re, dtype=np.float)
+    f = np.zeros_like(re, dtype=float)
     m1 = (re > 0) & (re <= 2000)
     m2 = (re > 2000) & (re < 4000)
     m3 = re >= 4000
     np.putmask(f, m1, 16 / re)
-    np.putmask(f, m2 | m3, _chen_approx(re, D, eps))
+    np.putmask(f, m2 | m3, chen_approx(re, D, eps))
     np.putmask(f, m2, (f * (re - 2e3) + (16 / re) * (4e3 - re)) / 2e3)
     return f * (1 if fanning else 4)
 
@@ -133,7 +133,7 @@ def mach(density, pressure, velocity, gamma=1.4):
 # %%
 # ---------- single phase funcions ----------#
 def single_phase_gradient(mass_rate, D, density, viscosity=1e-3, inc=1,
-                          eps=.15e-3, compressibility=0):
+                          eps=.15e-3, compressibility=0, verbose=False):
     """
     generic single phase fluid gradient (adiabatic)
 
@@ -189,7 +189,7 @@ def single_phase_gradient(mass_rate, D, density, viscosity=1e-3, inc=1,
         raise Warning('Flow is close to supersonic')
     dPv = (dPf + dPg) * Eh / (1 - Eh)
 
-    if _debug:
+    if verbose:
         print('DEBUG MODE')
         print('Kinetic factor dPv / dPtotal : {:.5f}'.format(Eh / (1 - Eh)))
         print('Mass Rate = {:.2f} kg/s'.format(mass_rate))
@@ -238,7 +238,7 @@ def beggs_brill_flowmap(Cl, NFr):
 #
 
 
-def _beggs_brill_holdup(i, Cl, NFr, Nlv, angle):
+def beggs_brill_holdup(i, Cl, NFr, Nlv, angle, verbose=False):
     """
     auxiliary function for calculating the liquid holdup
     """
@@ -254,7 +254,7 @@ def _beggs_brill_holdup(i, Cl, NFr, Nlv, angle):
         L2 = 0.0009252 * (Cl ** -2.4684)
         L3 = 0.1 * (Cl ** -1.4516)
         A = (L3 - NFr) / (L3 - L2)
-        H1, H2 = (_beggs_brill_holdup(k, Cl, NFr, Nlv, angle)
+        H1, H2 = (beggs_brill_holdup(k, Cl, NFr, Nlv, angle)
                   for k in (1, 2))
         return A * H1 + (1 - A) * H2
     else:
@@ -276,7 +276,7 @@ def _beggs_brill_holdup(i, Cl, NFr, Nlv, angle):
         b_theta = 1 + np.clip(C, 0, np.inf) * (
                 np.sin(1.8 * angle) - np.sin(1.8 * angle)**3 / 3)
 
-    if _debug:
+    if verbose:
         print('Intermediate holdup calculations:')
         print('\t0-angle holdup: {:.3f}'.format(El0))
         print('\tC: {:.3f}'.format(C))
@@ -373,11 +373,7 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
     vsl = ql / A
     Nlv = vsl * (rho_liquid / (0.001 * sigma * SPC.g))**0.25
 
-    # flow regime determination
-    i = beggs_brill_flowmap(Cl, NFr)
-    regime = ['segregated', 'intermittent', 'distributed', 'transition'][i]
-
-    if _debug:
+    if verbose:
         print('\n' + '-' * 20)
         print('Results for begg brill calculation')
         print('NOTE: Rates are negative, gradients are in the direction of '
@@ -388,9 +384,10 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
               'total'.format(liquid_mass_rate, gas_mass_rate, total_mass_rate))
         print('\tDensity: {:.3f} kg/m3 liq, {:.3f} kg/m3 gas'.format(
                 rho_liquid, rho_gas))
-        print('\tViscosity: {:.3f} Pa.s liq, {:.3f} Pa.s gas'.format(
+        print('\tViscosity: {:.6f} Pa.s liq, {:.6f} Pa.s gas'.format(
                 mu_liquid, mu_gas))
         print('\tSigma: {:.3f}, inc: {:.3f}'.format(sigma, inc))
+        print('\tCompressibility: {:.6f}'.format(mix_compressibility))
         print('Intermediate calculations:')
         print('\tVolume rate: {:.3f} m3/s liq, {:.3f} m3/s gas, {:.3f}'
               ' m3/s total'.format(ql, qg, ql + qg))
@@ -404,8 +401,12 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
         print('\tLiquid velocity number: {:.3f}'.format(Nlv))
         print('\tReynolds: {:,.1f}'.format(ReNs))
 
+    # flow regime determination
+    i = beggs_brill_flowmap(Cl, NFr)
+    regime = ['segregated', 'intermittent', 'distributed', 'transition'][i]
+
     # Holdup correlation based on flow regime
-    El = _beggs_brill_holdup(i, Cl, NFr, Nlv, np.arcsin(inc))
+    El = beggs_brill_holdup(i, Cl, NFr, Nlv, np.arcsin(inc), verbose=verbose)
 
     # Holdup corrections
     if payne_correction:
@@ -443,7 +444,7 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
     if inverse_flow:    # for negative rates the gradient is reversed back
         grad = -grad
     grad[0] = grad.sum()
-    if _debug:
+    if verbose:
         print('Calculations:')
         print('\tFlow Regime:', regime)
         gtext = '\t{} Gradient: {:.3f} Pa/m'
@@ -567,149 +568,6 @@ def test2(D=50, eps=0.0018, alpha=90, P0=119,
     return output
     
     
-
-
-#%%
-# =============================================================================
-# ---------- Part 3: Classes ----------#
-# =============================================================================
-#
-#def fluid_single_phase_gradient(rate, inc, D, eps, fluid, pressure,
-#                                temperature, units=None):
-#    """
-#    pressure gradient for a single phase fluid in a constant diameter pipe
-#
-#    Inputs:
-#        - rate: flow rate
-#        - inc: pipe inclination or sin alpha
-#        - D: pipe diameter in m
-#        - eps: pipe roughness in m
-#        - fluid: fluid object from which (based on P ant T),
-#                 viscosity and density are calculated
-#        - temperature
-#        - pressure
-#        - unit dictionary
-#
-#    Outputs:
-#        - dPg: gravity gradient (negative if inc > 0)
-#        - dPf: friction gradient (negative if mass_rate > 0)
-#        - dPv: acceleration gradient (assumes 0)
-#    """
-#    rho = fluid.get_density(pressure, temperature)
-#    mu = fluid.get_viscosity(pressure, temperature)
-#    densitySC = fluid.get_densitySC()
-#    return single_phase_gradient(rate, inc, D, eps, rho, mu, densitySC, units)
-#
-#
-#class GradientFunctions():
-#    """
-#    gradient functions container
-#    uses unit system from constants.Globals.units
-#    """
-#
-#    @staticmethod
-#    def single_phase_gradient(std_rate, inc, D, eps, density, viscosity,
-#                              densitySC=None):
-#        """
-#        generic single phase fluid gradient
-#        """
-#        p_u, l_u, d_u, mu_u, r_u = constants.Globals.get_unit_conversions(
-#                'pressure', 'length', 'density', 'viscosity', 'rate')
-#
-#        # rho in kg/m3, rate in cumecs, mu in cP, D and epsilon in m
-#        rho = density * d_u
-#        mu = viscosity * mu_u / 0.001
-#        mass_rate = std_rate * r_u * (rho if densitySC is None
-#                                      else densitySC * d_u)
-#        D *= l_u
-#        eps *= l_u
-#
-#        # adjust friction factor from Fanning to Darcy-Weibash (x4)
-#        dPg = - SPC.g * inc * rho * (l_u / p_u)
-#
-#        re = reynolds(np.abs(mass_rate), D, mu)
-#        if re > 0:
-#            f = find_friction_factor(re, eps, D) * 4
-#            v = (mass_rate / rho / (D**2 / 4 * np.pi))
-#            dPf = (- f if mass_rate > 0 else f) / (2 * D) * rho * v**2
-#            dPf *= (l_u / p_u)
-#        else:
-#            dPf = 0
-#        dPv = 0
-#
-#        if constants.Globals.verbose:
-#            print('DEBUG MODE')
-#            print('Mass Rate = {:.2f} kg/s'.format(mass_rate))
-#            rate = std_rate * r_u * densitySC / density
-#            print('Actual Rate = {:.2f} m3/s'.format(rate))
-#            print('Inc = {:.2f}'.format(inc))
-#            print('D = {}, eps = {} meters'.format(D, eps))
-#            print('Density = {:.3f} kg/m3'.format(density))
-#            print('Viscosity = {:.3f} cP'.format(viscosity))
-#            print('Speed = {:.3f}'.format(rate / (D**2 / 4 * np.pi)))
-#        return dPg, dPf, dPv
-#
-#    @classmethod
-#    def fluid_single_phase_gradient(cls, rate, inc, D, eps, fluid, pressure,
-#                                    temperature):
-#        """
-#        pressure gradient for a single phase fluid in a constant diameter pipe
-#
-#        Inputs:
-#            - rate: flow rate
-#            - inc: pipe inclination or sin alpha
-#            - D: pipe diameter in m
-#            - eps: pipe roughness in m
-#            - fluid: fluid object from which (based on P ant T),
-#                     viscosity and density are calculated
-#            - temperature
-#            - pressure
-#
-#        Outputs:
-#            - dPg: gravity gradient (negative if inc > 0)
-#            - dPf: friction gradient (negative if mass_rate > 0)
-#            - dPv: acceleration gradient (assumes 0)
-#        """
-#        rho = fluid.get_density(pressure, temperature)
-#        mu = fluid.get_viscosity(pressure, temperature)
-#        densitySC = fluid.get_densitySC()
-#        return cls.generic_gradient(rate, inc, D, eps, rho, mu, densitySC)
-#
-#    @staticmethod
-#    def gas_liquid_gradient(mass_rate_vector, inc, eps, D, sigma,
-#                            density_vector, viscosity_vector,
-#                            holdup_adj=0):
-#        """
-#        inputs vectors of the form np.array([x_liquid, x_gas])
-#        mass_rate_vector in kg/s
-#        all else in custom units
-#        """
-#        p_u, l_u, d_u, mu_u, r_u = constants.Globals.get_unit_conversions(
-#                'pressure', 'length', 'density', 'viscosity', 'rate')
-#        density_vector *= d_u
-#        viscosity_vector *= mu_u / 0.001
-#        try:
-#            grad = beggs_brill_correlation(*mass_rate_vector, *density_vector,
-#                                           inc, sigma, eps, D,
-#                                           *viscosity_vector,
-#                                           holdup_adj=holdup_adj,
-#                                           full_output=False,
-#                                           verbose=constants.Globals.verbose)
-#        except TypeError as e:
-#            e.args += ('Cannot call correlation, perhaps vectors are not 2d?',)
-#            raise
-#        return np.array(grad) * l_u / p_u
-#
-#    @staticmethod
-#    def get_friction_factor(rate, D, eps, density, viscosity):
-#        """
-#        single phase friction factor calculation for global unit system
-#        """
-#        r_u, rho_u, mu_u, l_u = constants.Globals.get_unit_conversions(
-#                'rate', 'density', 'viscosity', 'length')
-#        mu = viscosity * mu_u / 0.001
-#        rho = density * rho_u
-#        mass_rate = rho * (rate * r_u)
-#        re = reynolds(mass_rate, D, mu)
-#        eps = eps * l_u
-#        return find_friction_factor(re, eps, D)
+if __name__ == '__main__':
+    test1()
+    test2()
