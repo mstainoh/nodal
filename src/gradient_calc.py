@@ -39,6 +39,11 @@ class Tubing:
         return self.trayectory.get_knots()
 
 class SinglePhaseVLP:
+    """_summary_
+
+    Returns:
+        _type_: _description_
+    """
     verbose = False
     solver_kwargs = {'method': 'RK45'}
     def __init__(self, tubing: Tubing,
@@ -70,15 +75,25 @@ class SinglePhaseVLP:
         return self.tubing.get_area()
 
     def get_velocity(self, P, x, mass_rate):
-        return mass_rate / self.get_area() / self.get_density(P, x)
+        return mass_rate / self.get_area() / self.fluid.get_density(P, self.get_temperature(x))
 
+    def get_gradient_parameters(self, P, x):
+        T = self.get_temperature(x)
+        density = self.fluid.get_density(P, T)
+        viscosity = self.fluid.get_viscosity(P,T)
+        compressibility = self.fluid.get_compressibility(P,T)
+        return dict(
+            D= self.tubing.D,
+            eps = self.tubing.eps,
+            density = density,
+            viscosity = viscosity,
+            inc = self.get_inclination(x),
+            compressibility = compressibility
+        )
+    
     def get_gradient(self, P, x, mass_rate):
-        D, eps = self.tubing.D, self.tubing.eps
-        density = self.get_density(P, x)
-        viscosity = self.get_viscosity(P, x)
-        inc = self.get_inclination(x)
-        compressibility = self.get_compressibility(P, x)
-        return gf.single_phase_gradient(mass_rate=mass_rate, D=D, density=density, viscosity=viscosity, inc=inc, eps=eps, compressibility=compressibility)
+        gkwargs = self.get_gradient_parameters(P, x)
+        return gf.single_phase_gradient(mass_rate=mass_rate, **gkwargs)
 
     def get_solver(self, mass_rate, BHP=None, THP=None):
         assert np.logical_xor(BHP is None, THP is None), 'one and only one of BHP or THP needs to be specified'
@@ -139,32 +154,41 @@ class BiPhaseVLP(SinglePhaseVLP):
     def get_velocity(self, P, x, mass_rate):
         raise AttributeError('only valid for single fluids')
 
-    def get_gradient(self, P, x, mass_rate):
-        D, eps = self.tubing.D, self.tubing.eps
-        liquid_mass_rate, gas_mass_rate = mass_rate
-        inc = self.get_inclination(x)
+    def get_gradient_parameters(self, P, x):
         T = self.get_temperature(x)
-        rho_liquid = self.liquid.get_density(P, T)
         rho_gas = self.gas.get_density(P, T)
-        mu_liquid = self.liquid.get_viscosity(P, T)
-        mu_gas = self.gas.get_viscosity(P, T)
-        sigma = self.get_interfacial_tension(P, T)
-        mix_compressibility = (
-            liquid_mass_rate / rho_liquid * self.liquid.get_compressibility(P, T) + 
-            gas_mass_rate / rho_gas * self.gas.get_compressibility(P, T)
-        ) / (liquid_mass_rate / rho_liquid + gas_mass_rate / rho_gas)
+        rho_liquid = self.liquid.get_density(P, T)
+
+        return dict(
+            D = self.tubing.D,
+            eps=self.tubing.eps,
+            inc = self.get_inclination(x),
+            rho_liquid = rho_liquid,
+            rho_gas = rho_gas,
+            mu_liquid = self.liquid.get_viscosity(P, T),
+            mu_gas = self.gas.get_viscosity(P, T),
+            sigma = self.get_interfacial_tension(P, T),
+            compressibility_liquid = self.liquid.get_compressibility(P, T),
+            compressibility_gas = self.gas.get_compressibility(P, T),
+            
+        )
+
+    def get_gradient(self, P, x, mass_rate, full_output=False):
         if self.verbose:
             print('gradient inputs:')
             print('pressure:', P)
             print('x:', x)
             print('mass_rate:', mass_rate)
-        return gf.beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
-                            rho_liquid=rho_liquid, rho_gas=rho_gas,
-                            mu_liquid=mu_liquid, mu_gas=mu_gas,
-                            D=D, inc=inc, eps=eps, sigma=sigma,
-                            mix_compressibility=mix_compressibility,
+        gkwargs = self.get_gradient_parameters(P, x)
+        liquid_mass_rate, gas_mass_rate = mass_rate
+        gkwargs['mix_compressibility'] = (
+                liquid_mass_rate / gkwargs['rho_liquid'] * gkwargs['compressibility_liquid'] + 
+                gas_mass_rate / gkwargs['rho_gas'] * gkwargs['compressibility_gas'] 
+                ) / (liquid_mass_rate / gkwargs['rho_liquid'] + gas_mass_rate / gkwargs['rho_gas'])
+
+        return gf.beggs_brill_correlation(**gkwargs, liquid_mass_rate=liquid_mass_rate, gas_mass_rate=gas_mass_rate,
                             holdup_adj=self.holdup_adj, payne_correction=self.payne_correction,
-                            full_output=False, verbose=self.verbose)
+                            full_output=full_output, verbose=self.verbose)
 
 if __name__ == '__main__':
     sep = '\n' + '-' * 20 + '\n'

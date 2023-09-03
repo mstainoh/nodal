@@ -216,7 +216,7 @@ def beggs_brill_flowmap(Cl, NFr):
     Parameters
     ----------
     Cl: float
-        no-slip liquid fraction
+        no-slip liquid fraction = volume of liquid / total volume
     Fr: float
         Froid number
     """
@@ -288,7 +288,7 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
                             rho_liquid, rho_gas,
                             mu_liquid, mu_gas,
                             D, inc=1, eps=.15e-3, sigma=30,
-                            mix_compressibility=0,
+                            compressibility_liquid=0, compressibility_gas=0, mix_compressibility=None,
                             holdup_adj=1, payne_correction=True,
                             full_output=False, verbose=False):
     """
@@ -316,8 +316,13 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
         surface tension in dynas/cm (default 30)
     eps: float
         pipe roughness in m (default .15mm)
-    mix_compressibility: float
-        compressibility of the mixture (used for calculating momentum loss) - default 0
+    compressibility_gas: float
+        compressibility of the liquid part (used for calculating momentum loss) - default 0
+    compressibility_liquid: float
+        compressibility of the gas part (used for calculating momentum loss) - default 0
+    mix_compressibility: float or None
+        compressibility of the mixture: if set to None, calculates it using volumetric average (default), otherwise liquid and gas
+        compressibility values are ignored
     holdup_adj: float
         multiplicator factor for adjusting correlation holdup;
         holdup will be limited to 0-1 in any case (default 1)
@@ -359,7 +364,7 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
     Cl = ql / (ql + qg)
     total_mass_rate = liquid_mass_rate + gas_mass_rate
 
-    # mix velocity in m/s
+    # mix no slip velocity in m/s
     A = np.pi * D ** 2 / 4
     v_mix = (ql + qg) / A
 
@@ -373,6 +378,8 @@ def beggs_brill_correlation(liquid_mass_rate, gas_mass_rate,
     vsl = ql / A
     Nlv = vsl * (rho_liquid / (0.001 * sigma * SPC.g))**0.25
 
+    if mix_compressibility is None:
+        mix_compressibility = compressibility_liquid * Cl + compressibility_gas * (1 - Cl)
     if verbose:
         print('\n' + '-' * 20)
         print('Results for begg brill calculation')
