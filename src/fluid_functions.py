@@ -2,6 +2,7 @@
 import numpy as np
 from scipy import constants as spc
 import functools
+import warnings
 
 def reynolds(v, D, density=1000, viscosity=0.001):
     """
