@@ -1,6 +1,10 @@
-from common import test_network_parameters, sep
 from network import Network
 import numpy as np
+
+if __name__ == '__main__':
+   from common import sep, test_network_parameters
+else:
+   from .common import sep, test_network_parameters
 
 test_network = Network(**test_network_parameters)
 
@@ -72,14 +76,15 @@ def test_balance():
 # ---------------------------------- #
 # Run tests
 # ---------------------------------- #
-print(sep)
-test_rate_propagation()
+if __name__ == '__main__':
+    print(sep)
+    test_rate_propagation()
 
-print(sep)
-test_balance()
+    print(sep)
+    test_balance()
 
-print(sep)
-print('Test succesful')
+    print(sep)
+    print('Test succesful')
 # ---------------------------------- #
 # 
 # ---------------------------------- #

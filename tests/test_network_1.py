@@ -1,7 +1,10 @@
 from network import Network, get_Q_from_h, get_h_from_Q
-from common import sep, test_network_parameters
-# parameters
-sep = '-' * 20 + '\n'
+
+if __name__ == '__main__':
+   from common import sep, test_network_parameters
+else:
+   from .common import sep, test_network_parameters
+
 
 def test_network():
   return Network(**test_network_parameters)
@@ -54,9 +57,10 @@ def test_flows():
 # run tests
 # ---------------------------------- #
 
-print(sep)
-test_basic_network()
-print(sep)
-test_flows()
-print(sep)
-print('Test succesful')
+if __name__ == '__main__':
+  print(sep)
+  test_basic_network()
+  print(sep)
+  test_flows()
+  print(sep)
+  print('Test succesful')

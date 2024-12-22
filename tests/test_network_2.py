@@ -1,6 +1,10 @@
-from common import test_network_parameters, sep
 from network import Network
 import warnings
+
+if __name__ == '__main__':
+   from common import sep, test_network_parameters
+else:
+   from .common import sep, test_network_parameters
 
 # ---------------------------------- #
 # setup
@@ -43,7 +47,8 @@ def test_bc():
 # ---------------------------------- #
 # run tests
 # ---------------------------------- #
-print(sep)
-test_bc()
-print(sep)
-print('Test succesful')
+if __name__ == '__main__':
+    print(sep)
+    test_bc()
+    print(sep)
+    print('Test succesful')

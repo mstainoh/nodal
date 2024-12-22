@@ -3,7 +3,10 @@ from fluid_functions import reynolds, find_friction_factor, single_phase_pressur
 import numpy as np
 import scipy.constants as spc
 
-from common import *
+if __name__ == '__main__':
+   from common import *
+else:
+   from .common import *
 
 # ---------------------------------- #
 # setup
